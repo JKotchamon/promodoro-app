@@ -11,7 +11,9 @@ let authFormMode = "signin";
 
 function initSupabase() {
   if (typeof supabase === "undefined") return;
-  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { flowType: "implicit" },
+  });
 
   showAuthOverlay();
 
@@ -179,7 +181,11 @@ async function submitAuth(e) {
 
   let error;
   if (authFormMode === "signup") {
-    ({ error } = await sb.auth.signUp({ email, password }));
+    ({ error } = await sb.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: window.location.origin + window.location.pathname },
+    }));
     if (!error) {
       errEl.textContent = "✅ Check your email for a confirmation link!";
       errEl.dataset.success = "true";
