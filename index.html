@@ -36,7 +36,7 @@
           <button class="mode-btn" data-mode="stopwatch" data-icon="⏱">Stopwatch</button>
         </div>
 
-        <div id="time-display" class="time-display">25:00</div>
+        <div id="time-display" class="time-display">00:25:00</div>
 
         <div id="cycle-indicator" class="cycle-indicator sw-hide">Cycle 1 / 4</div>
 
@@ -249,6 +249,13 @@
         <button id="export-btn" class="btn-secondary">⬇ Export data</button>
         <button id="import-btn" class="btn-secondary">⬆ Import data</button>
         <input type="file" id="import-file" accept=".json,application/json" hidden />
+      </div>
+
+      <hr />
+      <h3>Danger Zone</h3>
+      <p class="hint">This will permanently delete all tasks, sessions, and settings.</p>
+      <div class="modal-actions">
+        <button id="clear-data-btn" class="btn-danger">🗑 Clear all data</button>
       </div>
     </div>
   </div>

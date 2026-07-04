@@ -62,9 +62,7 @@ function formatStopwatch(ms) {
   const h = Math.floor(totalSec / 3600);
   const m = Math.floor((totalSec % 3600) / 60);
   const s = totalSec % 60;
-  const mm = String(m).padStart(2, "0");
-  const ss = String(s).padStart(2, "0");
-  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 // ---------- Element shortcuts ----------
@@ -307,9 +305,10 @@ function recordFocusSession(minutes, source = "pomodoro") {
 // ---------- Rendering ----------
 function formatTime(ms) {
   const totalSec = Math.round(ms / 1000);
-  const m = Math.floor(totalSec / 60);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
   const s = totalSec % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 function renderTimer() {
@@ -1063,6 +1062,27 @@ function saveSettings(e) {
   closeSettings();
 }
 
+// ---------- Clear all data ----------
+function clearAllData() {
+  if (!confirm("This will permanently delete ALL tasks, sessions, and settings. Are you sure?")) return;
+  Object.values(STORE_KEYS).forEach((k) => localStorage.removeItem(k));
+  settings = { ...DEFAULT_SETTINGS };
+  tasks = [];
+  sessions = [];
+  stopTicking();
+  clearInterval(swIntervalId);
+  swIntervalId = null;
+  sw.running = false;
+  sw.elapsed = 0;
+  sw.startedAt = 0;
+  setMode("focus", { keepCycle: false });
+  syncQuickSettings();
+  renderTasks();
+  renderDashboard();
+  updateTimingHint();
+  closeSettings();
+}
+
 // ---------- Export / import ----------
 function exportData() {
   const data = {
@@ -1196,6 +1216,7 @@ $("settings-overlay").addEventListener("click", (e) => {
   if (e.target === $("settings-overlay")) closeSettings();
 });
 
+$("clear-data-btn").addEventListener("click", clearAllData);
 $("export-btn").addEventListener("click", exportData);
 $("import-btn").addEventListener("click", () => $("import-file").click());
 $("import-file").addEventListener("change", (e) => {
