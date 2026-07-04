@@ -599,13 +599,14 @@ function playBeep() {
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.frequency.value = freq;
-      osc.type = "sine";
-      const t = ctx.currentTime + i * 0.22;
+      osc.type = "square";
+      const t = ctx.currentTime + i * 0.28;
       gain.gain.setValueAtTime(0.001, t);
-      gain.gain.exponentialRampToValueAtTime(0.3, t + 0.03);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+      gain.gain.exponentialRampToValueAtTime(0.9, t + 0.02);
+      gain.gain.setValueAtTime(0.9, t + 0.18);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.26);
       osc.start(t);
-      osc.stop(t + 0.22);
+      osc.stop(t + 0.28);
     });
   } catch {
     /* audio not available */
