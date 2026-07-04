@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Prodomoro</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body data-mode="focus">
+
+  <!-- ============ SESSION DONE BANNER ============ -->
+  <div id="session-done-bar" class="session-done-bar hidden">
+    <span id="session-done-msg"></span>
+    <button id="session-done-confirm" class="session-done-btn">Got it ✓</button>
+  </div>
+
+  <header class="topbar">
+    <h1 class="logo">🍅 Prodomoro</h1>
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="timer" data-icon="⏱">Timer</button>
+      <button class="tab-btn" data-tab="tasks" data-icon="✅">Tasks</button>
+      <button class="tab-btn" data-tab="dashboard" data-icon="📊">Dashboard</button>
+    </nav>
+    <button id="settings-btn" class="icon-btn" title="Settings">⚙️</button>
+  </header>
+
+  <main>
+
+    <!-- ============ TIMER TAB ============ -->
+    <section id="tab-timer" class="tab-panel active">
+      <div class="timer-card">
+        <div class="mode-switch">
+          <button class="mode-btn active" data-mode="focus">Focus</button>
+          <button class="mode-btn" data-mode="short">Short Break</button>
+          <button class="mode-btn" data-mode="long">Long Break</button>
+          <button class="mode-btn" data-mode="stopwatch" data-icon="⏱">Stopwatch</button>
+        </div>
+
+        <div id="time-display" class="time-display">25:00</div>
+
+        <div id="cycle-indicator" class="cycle-indicator sw-hide">Cycle 1 / 4</div>
+
+        <div class="timer-controls">
+          <button id="start-pause-btn" class="btn-primary">Start</button>
+          <button id="reset-btn" class="btn-secondary">Reset</button>
+          <button id="skip-btn" class="btn-secondary sw-hide" title="Skip to next session">Skip ⏭</button>
+          <button id="sw-stop-btn" class="btn-primary sw-only" title="Stop stopwatch and save session">Save Session</button>
+        </div>
+
+        <div class="inline-settings">
+          <div class="qs-group">
+            <span class="qs-label">Focus</span>
+            <input type="number" id="qs-focus" class="qs-input" min="1" max="120" />
+            <span class="qs-unit">min</span>
+          </div>
+          <div class="qs-sep"></div>
+          <div class="qs-group">
+            <span class="qs-label">Short break</span>
+            <input type="number" id="qs-short" class="qs-input" min="1" max="60" />
+            <span class="qs-unit">min</span>
+          </div>
+          <div class="qs-sep"></div>
+          <div class="qs-group">
+            <span class="qs-label">Long break</span>
+            <input type="number" id="qs-long" class="qs-input" min="1" max="60" />
+            <span class="qs-unit">min</span>
+          </div>
+          <div class="qs-sep"></div>
+          <div class="qs-group">
+            <span class="qs-label">Cycles</span>
+            <input type="number" id="qs-cycles" class="qs-input" min="1" max="12" />
+          </div>
+        </div>
+
+        <div class="task-picker">
+          <label for="active-task">Working on:</label>
+          <select id="active-task">
+            <option value="">— no task selected —</option>
+          </select>
+        </div>
+        <div id="task-timing-hint" class="task-timing-hint hidden"></div>
+      </div>
+    </section>
+
+    <!-- ============ TASKS TAB ============ -->
+    <section id="tab-tasks" class="tab-panel">
+      <div class="card">
+        <h2>My Tasks</h2>
+        <form id="task-form" class="task-form">
+          <div class="task-form-row">
+            <input type="text" id="task-name" placeholder="What are you working on?" maxlength="80" required />
+            <input type="number" id="task-estimate" min="1" max="99" value="1" title="Estimated pomodoros" />
+            <button type="button" id="toggle-custom-time" class="btn-icon-sm" title="Set custom timing for this task">⏱</button>
+            <button type="submit" class="btn-primary">Add</button>
+          </div>
+          <div id="custom-time-row" class="custom-time-row hidden">
+            <span class="custom-time-label">Custom time (optional — leave blank to use global defaults)</span>
+            <label class="time-input-group">Focus<input type="number" id="task-focus-mins" min="1" max="120" placeholder="—" /></label>
+            <label class="time-input-group">Short break<input type="number" id="task-short-mins" min="1" max="60" placeholder="—" /></label>
+            <label class="time-input-group">Long break<input type="number" id="task-long-mins" min="1" max="60" placeholder="—" /></label>
+          </div>
+        </form>
+        <ul id="task-list" class="task-list"></ul>
+        <p id="task-empty" class="empty-msg">No tasks yet. Add one above to get started!</p>
+      </div>
+    </section>
+
+    <!-- ============ DASHBOARD TAB ============ -->
+    <section id="tab-dashboard" class="tab-panel">
+      <div class="stats-grid">
+        <div class="card stat-card">
+          <div class="stat-value" id="stat-today-minutes">0</div>
+          <div class="stat-label">Focus minutes today</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-value" id="stat-today-pomos">0</div>
+          <div class="stat-label">Sessions today</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-value" id="stat-tasks-done">0</div>
+          <div class="stat-label">Tasks completed</div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-value" id="stat-streak">0 🔥</div>
+          <div class="stat-label">Day streak</div>
+        </div>
+      </div>
+
+      <!-- ============ ACTIVITY HEATMAP ============ -->
+      <div class="card heatmap-card">
+        <div class="heatmap-header">
+          <h2>Activity — Last 52 Weeks</h2>
+          <div class="heatmap-legend">
+            <span class="hm-leg-label">Less</span>
+            <div class="hm-leg-cells">
+              <div class="hm-cell"></div>
+              <div class="hm-cell" data-intensity="1"></div>
+              <div class="hm-cell" data-intensity="2"></div>
+              <div class="hm-cell" data-intensity="3"></div>
+              <div class="hm-cell" data-intensity="4"></div>
+            </div>
+            <span class="hm-leg-label">More</span>
+          </div>
+        </div>
+
+        <div class="heatmap-scroll">
+          <div class="heatmap-body">
+            <div class="hm-day-labels">
+              <div class="hm-day-label"></div>
+              <div class="hm-day-label">Mon</div>
+              <div class="hm-day-label"></div>
+              <div class="hm-day-label">Wed</div>
+              <div class="hm-day-label"></div>
+              <div class="hm-day-label">Fri</div>
+              <div class="hm-day-label"></div>
+            </div>
+            <div class="hm-grid-area">
+              <div id="hm-months" class="hm-months"></div>
+              <div id="heatmap-grid" class="heatmap-grid"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="heatmap-stats">
+          <div class="hm-stat">
+            <span class="hm-stat-value" id="hm-daily-avg">—</span>
+            <span class="hm-stat-label">Daily average</span>
+          </div>
+          <div class="hm-stat">
+            <span class="hm-stat-value" id="hm-days-pct">0%</span>
+            <span class="hm-stat-label">Days focused</span>
+          </div>
+          <div class="hm-stat">
+            <span class="hm-stat-value" id="hm-longest">0 days</span>
+            <span class="hm-stat-label">Longest streak</span>
+          </div>
+          <div class="hm-stat">
+            <span class="hm-stat-value" id="hm-current">0 days</span>
+            <span class="hm-stat-label">Current streak</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ TASK FOCUS STATS ============ -->
+      <div class="card">
+        <h2>Task Focus Stats</h2>
+        <p class="hint" style="margin-bottom:0.9rem">Total time spent and average focus minutes per active day — higher avg/day means deeper, more consistent focus.</p>
+        <div id="task-stats-list"></div>
+        <p id="task-stats-empty" class="empty-msg">No task sessions yet. Link a task to your timer and complete a focus session.</p>
+      </div>
+
+      <div class="card">
+        <h2>Today's Missions</h2>
+        <ul id="missions-list" class="missions-list"></ul>
+        <p id="missions-empty" class="empty-msg">Complete a focus session to log your first mission today.</p>
+      </div>
+
+
+      <!-- ============ MONTHLY CALENDAR ============ -->
+      <div class="card">
+        <div class="cal-nav">
+          <button id="cal-prev" class="btn-secondary cal-nav-btn">&#8249;</button>
+          <h2 id="cal-title"></h2>
+          <button id="cal-next" class="btn-secondary cal-nav-btn">&#8250;</button>
+        </div>
+        <div class="cal-weekdays">
+          <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span>
+          <span>Thu</span><span>Fri</span><span>Sat</span>
+        </div>
+        <div id="calendar-grid" class="calendar-grid"></div>
+        <div id="cal-detail" class="cal-detail hidden">
+          <div class="cal-detail-header">
+            <strong id="cal-detail-title"></strong>
+            <button id="cal-detail-close" class="cal-close-btn">✕</button>
+          </div>
+          <ul id="cal-detail-list" class="missions-list"></ul>
+          <p id="cal-detail-empty" class="empty-msg hidden">No sessions on this day.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============ SETTINGS MODAL ============ -->
+  <div id="settings-overlay" class="overlay hidden">
+    <div class="modal">
+      <h2>Settings</h2>
+      <p class="hint" style="margin-bottom:1rem">Timing is set directly on the Timer page. Adjust focus/break/cycle durations there.</p>
+      <form id="settings-form">
+        <label class="checkbox-row">
+          <input type="checkbox" id="set-autostart" />
+          Auto-start next session
+        </label>
+        <label class="checkbox-row">
+          <input type="checkbox" id="set-sound" />
+          Sound notification
+        </label>
+
+        <div class="modal-actions">
+          <button type="submit" class="btn-primary">Save</button>
+          <button type="button" id="settings-cancel" class="btn-secondary">Cancel</button>
+        </div>
+      </form>
+
+      <hr />
+      <h3>Backup</h3>
+      <p class="hint">Your data is saved in this browser. Export a backup file to keep it safe or move it to another computer.</p>
+      <div class="modal-actions">
+        <button id="export-btn" class="btn-secondary">⬇ Export data</button>
+        <button id="import-btn" class="btn-secondary">⬆ Import data</button>
+        <input type="file" id="import-file" accept=".json,application/json" hidden />
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TASK EDIT MODAL ============ -->
+  <div id="task-edit-overlay" class="overlay hidden">
+    <div class="modal">
+      <h2>Edit Task</h2>
+      <form id="task-edit-form">
+        <label>Task name
+          <input type="text" id="edit-task-name" maxlength="80" required />
+        </label>
+        <label>Estimated pomodoros
+          <input type="number" id="edit-task-estimate" min="1" max="99" />
+        </label>
+        <h3 style="margin-top:1rem">Custom timing</h3>
+        <p class="hint" style="margin-bottom:0.8rem">Leave blank to use the global defaults from Settings.</p>
+        <label>Focus (min)
+          <input type="number" id="edit-task-focus" min="1" max="120" placeholder="—" />
+        </label>
+        <label>Short break (min)
+          <input type="number" id="edit-task-short" min="1" max="60" placeholder="—" />
+        </label>
+        <label>Long break (min)
+          <input type="number" id="edit-task-long" min="1" max="60" placeholder="—" />
+        </label>
+        <div class="modal-actions">
+          <button type="submit" class="btn-primary">Save</button>
+          <button type="button" id="task-edit-cancel" class="btn-secondary">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
