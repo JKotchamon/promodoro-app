@@ -17,13 +17,20 @@ function initSupabase() {
 
   showAuthOverlay();
 
-  sb.auth.onAuthStateChange(async (_event, session) => {
+  sb.auth.onAuthStateChange((_event, session) => {
     const wasLoggedIn = !!currentUser;
+    const sameUser = wasLoggedIn && currentUser.id === session?.user?.id;
     currentUser = session?.user ?? null;
     if (currentUser) {
-      if (_event === "TOKEN_REFRESHED" && wasLoggedIn) return;
-      await loadFromSupabase();
-      hideAuthOverlay();
+      // Tab refocus / token refresh re-fires SIGNED_IN for the same user;
+      // data is already loaded, so don't show the loading overlay again.
+      if (sameUser) return;
+      // Supabase holds an auth lock while this callback runs — awaiting
+      // queries here deadlocks. Defer them past the callback instead.
+      setTimeout(async () => {
+        await loadFromSupabase();
+        hideAuthOverlay();
+      }, 0);
     } else {
       if (wasLoggedIn) {
         tasks = []; sessions = []; settings = { ...DEFAULT_SETTINGS };
