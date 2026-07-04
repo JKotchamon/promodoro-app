@@ -314,6 +314,7 @@ function setMode(mode, { keepCycle = true } = {}) {
   }
 
   stopTicking();
+  stopKeepAlive();
   if (swIntervalId) { clearInterval(swIntervalId); swIntervalId = null; sw.running = false; }
 
   timer.mode = mode;
@@ -357,10 +358,12 @@ function startPause() {
     timer.remainingMs = Math.max(0, timer.endTime - Date.now());
     timer.running = false;
     stopTicking();
+    stopKeepAlive();
   } else {
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
+    startKeepAlive();
     timer.endTime = Date.now() + timer.remainingMs;
     timer.running = true;
     timer.intervalId = setInterval(tick, 250);
@@ -384,6 +387,7 @@ function resetTimer() {
     return;
   }
   stopTicking();
+  stopKeepAlive();
   timer.running = false;
   timer.remainingMs = modeDuration(timer.mode);
   renderTimer();
@@ -411,6 +415,7 @@ function startAlarm() {
 function stopAlarm() {
   clearInterval(alarmIntervalId);
   alarmIntervalId = null;
+  if (!timer.running) stopKeepAlive();
 }
 
 // ---------- Session done banner ----------
@@ -468,9 +473,9 @@ function advance(skipped) {
 
 function skipSession() {
   stopTicking();
+  timer.running = false;
   stopAlarm();
   $("session-done-bar").classList.add("hidden");
-  timer.running = false;
   advance(true);
 }
 
@@ -589,9 +594,49 @@ function notify(title, body) {
   }
 }
 
+// Shared AudioContext, unlocked by the Start tap. Mobile browsers block
+// audio from contexts created while the tab is hidden, so the alarm must
+// reuse this one instead of creating its own.
+let audioCtx = null;
+let keepAliveNodes = null;
+
+function getAudioCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === "suspended") audioCtx.resume();
+  return audioCtx;
+}
+
+// While the timer runs, play a near-silent tone. The browser then treats
+// the tab as "playing audio" and keeps it awake in the background, so the
+// alarm can ring even when the user is in another app.
+function startKeepAlive() {
+  if (!settings.sound || keepAliveNodes) return;
+  try {
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = 50;
+    gain.gain.value = 0.001;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    keepAliveNodes = { osc, gain };
+  } catch {
+    /* audio not available */
+  }
+}
+
+function stopKeepAlive() {
+  if (!keepAliveNodes) return;
+  try { keepAliveNodes.osc.stop(); } catch { /* already stopped */ }
+  keepAliveNodes = null;
+}
+
 function playBeep() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = getAudioCtx();
     const notes = [660, 880, 990];
     notes.forEach((freq, i) => {
       const osc = ctx.createOscillator();
@@ -1300,6 +1345,7 @@ function clearAllData() {
   tasks = [];
   sessions = [];
   stopTicking();
+  stopKeepAlive();
   clearInterval(swIntervalId);
   swIntervalId = null;
   sw.running = false;
@@ -1379,6 +1425,12 @@ document.querySelectorAll(".mode-btn").forEach((btn) => {
 
 startPauseBtn.addEventListener("click", startPause);
 $("reset-btn").addEventListener("click", resetTimer);
+
+// If the browser throttled the tab while backgrounded, catch up the
+// timer (and fire the alarm if the session ended) as soon as we return.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && timer.running) tick();
+});
 $("skip-btn").addEventListener("click", skipSession);
 $("sw-stop-btn").addEventListener("click", stopAndSaveStopwatch);
 
