@@ -21,6 +21,7 @@ function initSupabase() {
     const wasLoggedIn = !!currentUser;
     currentUser = session?.user ?? null;
     if (currentUser) {
+      if (_event === "TOKEN_REFRESHED" && wasLoggedIn) return;
       await loadFromSupabase();
       hideAuthOverlay();
     } else {
@@ -53,6 +54,7 @@ async function loadFromSupabase() {
   if (!sb || !currentUser) return;
   $("app-loading").classList.remove("hidden");
 
+  try {
   const uid = currentUser.id;
   const [{ data: sRow }, { data: tRows }, { data: sesRows }] = await Promise.all([
     sb.from("settings").select("*").eq("user_id", uid).maybeSingle(),
@@ -100,6 +102,10 @@ async function loadFromSupabase() {
   renderTasks();
   renderDashboard();
   updateTimingHint();
+  } catch (err) {
+    console.error("loadFromSupabase failed:", err);
+    $("app-loading").classList.add("hidden");
+  }
 }
 
 function sbUpsertSettings() {
