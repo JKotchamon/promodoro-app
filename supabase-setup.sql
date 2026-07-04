@@ -22,7 +22,10 @@ create table public.tasks (
   estimate   int not null default 1,
   completed  int not null default 0,
   done       boolean not null default false,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  focus_mins int,
+  short_mins int,
+  long_mins  int
 );
 
 -- Finished focus sessions (the "records")
@@ -32,7 +35,8 @@ create table public.sessions (
   task_id   uuid references public.tasks(id) on delete set null,
   task_name text not null default '',
   minutes   int not null,
-  date      timestamptz not null default now()
+  date      timestamptz not null default now(),
+  source    text not null default 'pomodoro'
 );
 
 create index sessions_user_date on public.sessions (user_id, date desc);

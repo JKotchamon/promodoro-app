@@ -2,6 +2,205 @@
    Prodomoro — Pomodoro timer with tasks, dashboard and localStorage
    ================================================================== */
 
+// ================================================================
+// Supabase — auth & cloud sync
+// ================================================================
+let sb = null;
+let currentUser = null;
+let authFormMode = "signin";
+
+function initSupabase() {
+  if (typeof supabase === "undefined") return;
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  showAuthOverlay();
+
+  sb.auth.onAuthStateChange(async (_event, session) => {
+    const wasLoggedIn = !!currentUser;
+    currentUser = session?.user ?? null;
+    if (currentUser) {
+      await loadFromSupabase();
+      hideAuthOverlay();
+    } else {
+      if (wasLoggedIn) {
+        tasks = []; sessions = []; settings = { ...DEFAULT_SETTINGS };
+        setMode("focus", { keepCycle: false });
+        syncQuickSettings();
+        renderTasks();
+        renderDashboard();
+      }
+      showAuthOverlay();
+    }
+  });
+}
+
+function showAuthOverlay() {
+  $("auth-overlay").classList.remove("hidden");
+  $("user-email-display").classList.add("hidden");
+  $("signout-btn").classList.add("hidden");
+}
+
+function hideAuthOverlay() {
+  $("auth-overlay").classList.add("hidden");
+  $("user-email-display").textContent = currentUser.email;
+  $("user-email-display").classList.remove("hidden");
+  $("signout-btn").classList.remove("hidden");
+}
+
+async function loadFromSupabase() {
+  if (!sb || !currentUser) return;
+  $("app-loading").classList.remove("hidden");
+
+  const uid = currentUser.id;
+  const [{ data: sRow }, { data: tRows }, { data: sesRows }] = await Promise.all([
+    sb.from("settings").select("*").eq("user_id", uid).maybeSingle(),
+    sb.from("tasks").select("*").eq("user_id", uid).order("created_at"),
+    sb.from("sessions").select("*").eq("user_id", uid).order("date"),
+  ]);
+
+  if (sRow) {
+    settings = {
+      focus: sRow.focus,
+      short: sRow.short_break,
+      long: sRow.long_break,
+      cycles: sRow.cycles,
+      autoStart: sRow.auto_start,
+      sound: sRow.sound,
+    };
+    save(STORE_KEYS.settings, settings);
+  }
+
+  tasks = (tRows || []).map(r => ({
+    id: r.id,
+    name: r.name,
+    estimate: r.estimate,
+    completed: r.completed,
+    done: r.done,
+    createdAt: r.created_at,
+    focusMins: r.focus_mins || null,
+    shortMins: r.short_mins || null,
+    longMins: r.long_mins || null,
+  }));
+  save(STORE_KEYS.tasks, tasks);
+
+  sessions = (sesRows || []).map(r => ({
+    date: r.date,
+    taskId: r.task_id,
+    taskName: r.task_name,
+    minutes: r.minutes,
+    source: r.source || "pomodoro",
+  }));
+  save(STORE_KEYS.sessions, sessions);
+
+  $("app-loading").classList.add("hidden");
+  setMode("focus", { keepCycle: false });
+  syncQuickSettings();
+  renderTasks();
+  renderDashboard();
+  updateTimingHint();
+}
+
+function sbUpsertSettings() {
+  if (!sb || !currentUser) return;
+  sb.from("settings").upsert({
+    user_id: currentUser.id,
+    focus: settings.focus,
+    short_break: settings.short,
+    long_break: settings.long,
+    cycles: settings.cycles,
+    auto_start: settings.autoStart,
+    sound: settings.sound,
+  }).then();
+}
+
+function sbUpsertTask(task) {
+  if (!sb || !currentUser) return;
+  sb.from("tasks").upsert({
+    id: task.id,
+    user_id: currentUser.id,
+    name: task.name,
+    estimate: task.estimate,
+    completed: task.completed,
+    done: task.done,
+    created_at: task.createdAt,
+    focus_mins: task.focusMins,
+    short_mins: task.shortMins,
+    long_mins: task.longMins,
+  }).then();
+}
+
+function sbRemoveTask(id) {
+  if (!sb || !currentUser) return;
+  sb.from("tasks").delete().eq("id", id).eq("user_id", currentUser.id).then();
+}
+
+function sbInsertSession(session) {
+  if (!sb || !currentUser) return;
+  sb.from("sessions").insert({
+    user_id: currentUser.id,
+    task_id: session.taskId || null,
+    task_name: session.taskName,
+    minutes: session.minutes,
+    date: session.date,
+    source: session.source || "pomodoro",
+  }).then();
+}
+
+function sbClearAll() {
+  if (!sb || !currentUser) return;
+  const uid = currentUser.id;
+  Promise.all([
+    sb.from("sessions").delete().eq("user_id", uid),
+    sb.from("tasks").delete().eq("user_id", uid),
+    sb.from("settings").delete().eq("user_id", uid),
+  ]);
+}
+
+function setAuthMode(mode) {
+  authFormMode = mode;
+  document.querySelectorAll(".auth-tab").forEach(b =>
+    b.classList.toggle("active", b.dataset.auth === mode)
+  );
+  $("auth-submit").textContent = mode === "signin" ? "Sign In" : "Sign Up";
+  $("auth-password").autocomplete = mode === "signin" ? "current-password" : "new-password";
+  $("auth-error").classList.add("hidden");
+}
+
+async function submitAuth(e) {
+  e.preventDefault();
+  const email = $("auth-email").value.trim();
+  const password = $("auth-password").value;
+  const btn = $("auth-submit");
+  const errEl = $("auth-error");
+
+  btn.disabled = true;
+  btn.textContent = "Please wait…";
+  errEl.classList.add("hidden");
+
+  let error;
+  if (authFormMode === "signup") {
+    ({ error } = await sb.auth.signUp({ email, password }));
+    if (!error) {
+      errEl.textContent = "✅ Check your email for a confirmation link!";
+      errEl.dataset.success = "true";
+      errEl.classList.remove("hidden");
+      btn.disabled = false;
+      btn.textContent = "Sign Up";
+      return;
+    }
+  } else {
+    ({ error } = await sb.auth.signInWithPassword({ email, password }));
+  }
+
+  if (error) {
+    errEl.textContent = error.message;
+    delete errEl.dataset.success;
+    errEl.classList.remove("hidden");
+  }
+  btn.disabled = false;
+  btn.textContent = authFormMode === "signin" ? "Sign In" : "Sign Up";
+}
+
 // ---------- Storage ----------
 const STORE_KEYS = {
   settings: "prodomoro_settings",
@@ -288,15 +487,18 @@ function recordFocusSession(minutes, source = "pomodoro") {
   if (task && source === "pomodoro") {
     task.completed += 1;
     save(STORE_KEYS.tasks, tasks);
+    sbUpsertTask(task);
   }
-  sessions.push({
+  const session = {
     date: new Date().toISOString(),
     taskId,
     taskName: task ? task.name : "",
     minutes,
     source,
-  });
+  };
+  sessions.push(session);
   save(STORE_KEYS.sessions, sessions);
+  sbInsertSession(session);
   renderTasks();
   renderMissions();
   renderDashboard();
@@ -395,8 +597,8 @@ function playBeep() {
 // Tasks
 // ==================================================================
 function addTask(name, estimate, focusMins, shortMins, longMins) {
-  tasks.push({
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+  const task = {
+    id: crypto.randomUUID(),
     name,
     estimate,
     completed: 0,
@@ -405,8 +607,10 @@ function addTask(name, estimate, focusMins, shortMins, longMins) {
     focusMins: focusMins || null,
     shortMins: shortMins || null,
     longMins: longMins || null,
-  });
+  };
+  tasks.push(task);
   save(STORE_KEYS.tasks, tasks);
+  sbUpsertTask(task);
   renderTasks();
 }
 
@@ -415,6 +619,7 @@ function toggleTask(id) {
   if (!t) return;
   t.done = !t.done;
   save(STORE_KEYS.tasks, tasks);
+  sbUpsertTask(t);
   renderTasks();
   renderDashboard();
 }
@@ -451,6 +656,7 @@ function saveEditTask(e) {
   t.shortMins = parseInt($("edit-task-short").value, 10) || null;
   t.longMins = parseInt($("edit-task-long").value, 10) || null;
   save(STORE_KEYS.tasks, tasks);
+  sbUpsertTask(t);
   renderTasks();
   if (activeTaskSelect.value === editingTaskId && !timer.running && timer.mode !== "stopwatch") {
     timer.remainingMs = modeDuration(timer.mode);
@@ -466,6 +672,7 @@ function deleteTask(id) {
   if (!confirm(`Delete task "${t.name}"?`)) return;
   tasks = tasks.filter((t) => t.id !== id);
   save(STORE_KEYS.tasks, tasks);
+  sbRemoveTask(id);
   renderTasks();
   renderDashboard();
 }
@@ -1032,6 +1239,7 @@ function applyQuickSetting(settingKey, modeKey) {
     if (!val || val < 1) return;
     settings[settingKey] = val;
     save(STORE_KEYS.settings, settings);
+    sbUpsertSettings();
     if (settingKey === "cycles" && timer.cycle > settings.cycles) timer.cycle = 1;
     if (!timer.running && modeKey) {
       timer.remainingMs = modeDuration(modeKey);
@@ -1059,6 +1267,7 @@ function saveSettings(e) {
   settings.autoStart = $("set-autostart").checked;
   settings.sound = $("set-sound").checked;
   save(STORE_KEYS.settings, settings);
+  sbUpsertSettings();
   closeSettings();
 }
 
@@ -1066,6 +1275,7 @@ function saveSettings(e) {
 function clearAllData() {
   if (!confirm("This will permanently delete ALL tasks, sessions, and settings. Are you sure?")) return;
   Object.values(STORE_KEYS).forEach((k) => localStorage.removeItem(k));
+  sbClearAll();
   settings = { ...DEFAULT_SETTINGS };
   tasks = [];
   sessions = [];
@@ -1242,9 +1452,16 @@ window.addEventListener("beforeunload", (e) => {
 // ==================================================================
 // Init
 // ==================================================================
+document.querySelectorAll(".auth-tab").forEach(btn =>
+  btn.addEventListener("click", () => setAuthMode(btn.dataset.auth))
+);
+$("auth-form").addEventListener("submit", submitAuth);
+$("signout-btn").addEventListener("click", () => sb && sb.auth.signOut());
+
 setMode("focus", { keepCycle: false });
 syncQuickSettings();
 renderTasks();
 renderCalendar();
 renderDashboard();
 updateTimingHint();
+initSupabase();

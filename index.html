@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Prodomoro</title>
   <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
 </head>
 <body data-mode="focus">
 
@@ -22,6 +24,8 @@
       <button class="tab-btn" data-tab="dashboard" data-icon="📊">Dashboard</button>
     </nav>
     <button id="settings-btn" class="icon-btn" title="Settings">⚙️</button>
+    <span id="user-email-display" class="user-email hidden"></span>
+    <button id="signout-btn" class="btn-signout hidden">Sign out</button>
   </header>
 
   <main>
@@ -289,6 +293,33 @@
       </form>
     </div>
   </div>
+
+  <!-- ============ AUTH OVERLAY ============ -->
+  <div id="auth-overlay" class="overlay hidden">
+    <div class="modal auth-modal">
+      <h1 class="auth-logo">🍅 Prodomoro</h1>
+      <p class="hint">Sign in to keep your data safe and synced across all your devices.</p>
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-auth="signin">Sign In</button>
+        <button class="auth-tab" data-auth="signup">Sign Up</button>
+      </div>
+      <form id="auth-form">
+        <label>Email
+          <input type="email" id="auth-email" required autocomplete="email" placeholder="you@example.com" />
+        </label>
+        <label>Password
+          <input type="password" id="auth-password" required minlength="6" placeholder="••••••••" />
+        </label>
+        <p id="auth-error" class="auth-message hidden"></p>
+        <div class="modal-actions">
+          <button type="submit" id="auth-submit" class="btn-primary">Sign In</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ APP LOADING ============ -->
+  <div id="app-loading" class="app-loading hidden">Loading your data…</div>
 
   <script src="script.js"></script>
 </body>
