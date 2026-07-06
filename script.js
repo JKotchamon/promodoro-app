@@ -766,6 +766,12 @@ function deleteTask(id) {
   const removeIds = new Set([id, ...subs.map((s) => s.id)]);
   tasks = tasks.filter((t) => !removeIds.has(t.id));
   save(STORE_KEYS.tasks, tasks);
+  // Mirror the DB's "on delete set null" so per-task lists drop the
+  // deleted task immediately, not just after the next reload.
+  sessions.forEach((s) => {
+    if (removeIds.has(s.taskId)) s.taskId = null;
+  });
+  save(STORE_KEYS.sessions, sessions);
   removeIds.forEach((rid) => sbRemoveTask(rid));
   renderTasks();
   renderDashboard();
@@ -928,35 +934,25 @@ function renderTaskPicker() {
 const expandedMissions = new Set();
 const expandedCalDetail = new Set();
 
-// Resolve which main task a session belongs to, even when its task has
-// been deleted — in that case fall back to the stored "Parent › Sub" name.
+// Resolve which main task a session belongs to.
+// Returns null when the session's task was deleted — those sessions still
+// count toward overall focus time but are hidden from per-task lists.
 function resolveSessionTask(s) {
-  const task = s.taskId ? tasks.find((t) => t.id === s.taskId) : null;
-
-  if (task) {
-    const parent = task.parentId ? tasks.find((p) => p.id === task.parentId) : null;
-    if (parent) {
-      return { mainKey: parent.id, mainName: parent.name, mainTask: parent, task, subName: task.name };
-    }
-    return { mainKey: task.id, mainName: task.name, mainTask: task, task, subName: null };
+  if (!s.taskId) {
+    // taskName present means the task was deleted (DB sets task_id to null);
+    // no taskName means the session was run without a task.
+    if (s.taskName) return null;
+    return { mainKey: "__none__", mainName: "(no task)", mainTask: null, task: null, subName: null };
   }
 
-  const stored = s.taskName || "(no task)";
-  const sep = stored.indexOf(" › ");
-  if (sep !== -1) {
-    const parentName = stored.slice(0, sep);
-    const subName = stored.slice(sep + 3);
-    const parent = tasks.find((t) => !t.parentId && t.name === parentName);
-    return {
-      mainKey: parent ? parent.id : `__name__:${parentName}`,
-      mainName: parentName,
-      mainTask: parent || null,
-      task: null,
-      subName,
-    };
-  }
+  const task = tasks.find((t) => t.id === s.taskId);
+  if (!task) return null;
 
-  return { mainKey: s.taskId || "__none__", mainName: stored, mainTask: null, task: null, subName: null };
+  const parent = task.parentId ? tasks.find((p) => p.id === task.parentId) : null;
+  if (parent) {
+    return { mainKey: parent.id, mainName: parent.name, mainTask: parent, task, subName: task.name };
+  }
+  return { mainKey: task.id, mainName: task.name, mainTask: task, task, subName: null };
 }
 
 function groupSessionsByMainTask(sessionList) {
@@ -971,6 +967,7 @@ function groupSessionsByMainTask(sessionList) {
 
   sessionList.forEach((s) => {
     const r = resolveSessionTask(s);
+    if (!r) return;
 
     if (!map.has(r.mainKey)) {
       const g = blank(r.mainName);
@@ -1233,22 +1230,17 @@ function renderTaskStats() {
   const empty = $("task-stats-empty");
   container.innerHTML = "";
 
-  if (statsMap.size === 0) {
-    empty.classList.remove("hidden");
-    return;
-  }
-  empty.classList.add("hidden");
-
   const fmtMins = (mins) => {
     const h = Math.floor(mins / 60);
     const m = mins % 60;
     return h > 0 ? `${h}h ${m}m` : `${m} min`;
   };
 
-  // Roll subtask time up into its main task (handles deleted tasks too)
+  // Roll subtask time up into its main task; deleted tasks are hidden
   const groups = new Map();
   statsMap.forEach((data, id) => {
     const r = resolveSessionTask({ taskId: id, taskName: data.name });
+    if (!r) return;
 
     if (!groups.has(r.mainKey)) {
       groups.set(r.mainKey, {
@@ -1277,6 +1269,12 @@ function renderTaskStats() {
       });
     }
   });
+
+  if (groups.size === 0) {
+    empty.classList.remove("hidden");
+    return;
+  }
+  empty.classList.add("hidden");
 
   const entries = [...groups.values()]
     .map((g) => ({
