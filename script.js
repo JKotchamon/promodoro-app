@@ -91,6 +91,7 @@ async function loadFromSupabase() {
     focusMins: r.focus_mins || null,
     shortMins: r.short_mins || null,
     longMins: r.long_mins || null,
+    parentId: r.parent_id || null,
   }));
   save(STORE_KEYS.tasks, tasks);
 
@@ -141,6 +142,7 @@ function sbUpsertTask(task) {
     focus_mins: task.focusMins,
     short_mins: task.shortMins,
     long_mins: task.longMins,
+    parent_id: task.parentId || null,
   }).then();
 }
 
@@ -250,7 +252,7 @@ function save(key, value) {
 }
 
 let settings = { ...DEFAULT_SETTINGS, ...load(STORE_KEYS.settings, {}) };
-let tasks = load(STORE_KEYS.tasks, []);       // {id, name, estimate, completed, done, createdAt, focusMins, shortMins, longMins}
+let tasks = load(STORE_KEYS.tasks, []);       // {id, name, estimate, completed, done, createdAt, focusMins, shortMins, longMins, parentId}
 let sessions = load(STORE_KEYS.sessions, []); // {date, taskId, taskName, minutes, source}
 
 // ---------- Timer state ----------
@@ -521,7 +523,7 @@ function recordFocusSession(minutes, source = "pomodoro") {
   const session = {
     date: new Date().toISOString(),
     taskId,
-    taskName: task ? task.name : "",
+    taskName: task ? taskDisplayName(task) : "",
     minutes,
     source,
   };
@@ -669,7 +671,7 @@ function playBeep() {
 // ==================================================================
 // Tasks
 // ==================================================================
-function addTask(name, estimate, focusMins, shortMins, longMins) {
+function addTask(name, estimate, focusMins, shortMins, longMins, parentId = null) {
   const task = {
     id: crypto.randomUUID(),
     name,
@@ -680,11 +682,25 @@ function addTask(name, estimate, focusMins, shortMins, longMins) {
     focusMins: focusMins || null,
     shortMins: shortMins || null,
     longMins: longMins || null,
+    parentId,
   };
   tasks.push(task);
   save(STORE_KEYS.tasks, tasks);
   sbUpsertTask(task);
   renderTasks();
+}
+
+function taskParent(t) {
+  return t.parentId ? tasks.find((p) => p.id === t.parentId) : null;
+}
+
+function taskSubtasks(id) {
+  return tasks.filter((s) => s.parentId === id);
+}
+
+function taskDisplayName(t) {
+  const parent = taskParent(t);
+  return parent ? `${parent.name} › ${t.name}` : t.name;
 }
 
 function toggleTask(id) {
@@ -742,12 +758,127 @@ function saveEditTask(e) {
 function deleteTask(id) {
   const t = tasks.find((t) => t.id === id);
   if (!t) return;
-  if (!confirm(`Delete task "${t.name}"?`)) return;
-  tasks = tasks.filter((t) => t.id !== id);
+  const subs = taskSubtasks(id);
+  const msg = subs.length
+    ? `Delete task "${t.name}" and its ${subs.length} subtask${subs.length !== 1 ? "s" : ""}?`
+    : `Delete task "${t.name}"?`;
+  if (!confirm(msg)) return;
+  const removeIds = new Set([id, ...subs.map((s) => s.id)]);
+  tasks = tasks.filter((t) => !removeIds.has(t.id));
   save(STORE_KEYS.tasks, tasks);
-  sbRemoveTask(id);
+  removeIds.forEach((rid) => sbRemoveTask(rid));
   renderTasks();
   renderDashboard();
+}
+
+let addingSubtaskFor = null;
+
+function isSubtask(t) {
+  return !!(t.parentId && tasks.some((p) => p.id === t.parentId));
+}
+
+function buildTaskRow(t, sub) {
+  const li = document.createElement("li");
+  li.className = "task-item" + (t.done ? " done" : "") + (sub ? " subtask" : "");
+
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.checked = t.done;
+  checkbox.addEventListener("change", () => toggleTask(t.id));
+
+  const title = document.createElement("span");
+  title.className = "task-title";
+  title.textContent = t.name;
+
+  const pomos = document.createElement("span");
+  pomos.className = "task-pomos";
+  pomos.textContent = `🍅 ${t.completed} / ${t.estimate}`;
+
+  const actions = document.createElement("span");
+  actions.className = "task-actions";
+
+  if (!sub) {
+    const subBtn = document.createElement("button");
+    subBtn.textContent = "➕";
+    subBtn.title = "Add subtask";
+    subBtn.addEventListener("click", () => {
+      addingSubtaskFor = addingSubtaskFor === t.id ? null : t.id;
+      renderTasks();
+    });
+    actions.appendChild(subBtn);
+  }
+
+  const editBtn = document.createElement("button");
+  editBtn.textContent = "✏️";
+  editBtn.title = "Edit task";
+  editBtn.addEventListener("click", () => openEditTask(t.id));
+
+  const delBtn = document.createElement("button");
+  delBtn.textContent = "🗑️";
+  delBtn.title = "Delete";
+  delBtn.addEventListener("click", () => deleteTask(t.id));
+
+  actions.append(editBtn, delBtn);
+
+  if (t.focusMins || t.shortMins || t.longMins) {
+    const badge = document.createElement("span");
+    badge.className = "task-time-badge";
+    const f = t.focusMins ? `${t.focusMins}m` : "—";
+    const s = t.shortMins ? `${t.shortMins}m` : "—";
+    const l = t.longMins ? `${t.longMins}m` : "—";
+    badge.textContent = `⏱ ${f} / ${s} / ${l}`;
+    badge.title = `Focus: ${f}, Short break: ${s}, Long break: ${l}`;
+    li.append(checkbox, title, badge, pomos, actions);
+  } else {
+    li.append(checkbox, title, pomos, actions);
+  }
+
+  return li;
+}
+
+function buildSubtaskForm(parent) {
+  const li = document.createElement("li");
+  li.className = "task-item subtask subtask-form";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.maxLength = 80;
+  input.placeholder = `New subtask of "${parent.name}"…`;
+
+  const addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.className = "btn-primary";
+  addBtn.textContent = "Add";
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "btn-secondary";
+  cancelBtn.textContent = "✕";
+
+  const submit = () => {
+    const name = input.value.trim();
+    if (!name) return;
+    addingSubtaskFor = null;
+    addTask(name, 1, null, null, null, parent.id);
+  };
+  addBtn.addEventListener("click", submit);
+  cancelBtn.addEventListener("click", () => {
+    addingSubtaskFor = null;
+    renderTasks();
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      submit();
+    } else if (e.key === "Escape") {
+      addingSubtaskFor = null;
+      renderTasks();
+    }
+  });
+
+  li.append(input, addBtn, cancelBtn);
+  requestAnimationFrame(() => input.focus());
+  return li;
 }
 
 function renderTasks() {
@@ -756,51 +887,10 @@ function renderTasks() {
   $("task-empty").classList.toggle("hidden", tasks.length > 0);
 
   tasks.forEach((t) => {
-    const li = document.createElement("li");
-    li.className = "task-item" + (t.done ? " done" : "");
-
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = t.done;
-    checkbox.addEventListener("change", () => toggleTask(t.id));
-
-    const title = document.createElement("span");
-    title.className = "task-title";
-    title.textContent = t.name;
-
-    const pomos = document.createElement("span");
-    pomos.className = "task-pomos";
-    pomos.textContent = `🍅 ${t.completed} / ${t.estimate}`;
-
-    const actions = document.createElement("span");
-    actions.className = "task-actions";
-
-    const editBtn = document.createElement("button");
-    editBtn.textContent = "✏️";
-    editBtn.title = "Edit task";
-    editBtn.addEventListener("click", () => openEditTask(t.id));
-
-    const delBtn = document.createElement("button");
-    delBtn.textContent = "🗑️";
-    delBtn.title = "Delete";
-    delBtn.addEventListener("click", () => deleteTask(t.id));
-
-    actions.append(editBtn, delBtn);
-
-    if (t.focusMins || t.shortMins || t.longMins) {
-      const badge = document.createElement("span");
-      badge.className = "task-time-badge";
-      const f = t.focusMins ? `${t.focusMins}m` : "—";
-      const s = t.shortMins ? `${t.shortMins}m` : "—";
-      const l = t.longMins ? `${t.longMins}m` : "—";
-      badge.textContent = `⏱ ${f} / ${s} / ${l}`;
-      badge.title = `Focus: ${f}, Short break: ${s}, Long break: ${l}`;
-      li.append(checkbox, title, badge, pomos, actions);
-    } else {
-      li.append(checkbox, title, pomos, actions);
-    }
-
-    list.appendChild(li);
+    if (isSubtask(t)) return; // rendered under its parent below
+    list.appendChild(buildTaskRow(t, false));
+    taskSubtasks(t.id).forEach((s) => list.appendChild(buildTaskRow(s, true)));
+    if (addingSubtaskFor === t.id) list.appendChild(buildSubtaskForm(t));
   });
 
   renderTaskPicker();
@@ -809,14 +899,24 @@ function renderTasks() {
 function renderTaskPicker() {
   const current = activeTaskSelect.value;
   activeTaskSelect.innerHTML = '<option value="">— no task selected —</option>';
-  tasks
-    .filter((t) => !t.done)
-    .forEach((t) => {
-      const opt = document.createElement("option");
-      opt.value = t.id;
-      opt.textContent = t.name + (t.focusMins || t.shortMins || t.longMins ? " ⏱" : "");
-      activeTaskSelect.appendChild(opt);
-    });
+
+  const addOption = (t, sub) => {
+    if (t.done) return;
+    const opt = document.createElement("option");
+    opt.value = t.id;
+    opt.textContent =
+      (sub ? "  ↳ " : "") +
+      t.name +
+      (t.focusMins || t.shortMins || t.longMins ? " ⏱" : "");
+    activeTaskSelect.appendChild(opt);
+  };
+
+  tasks.forEach((t) => {
+    if (isSubtask(t)) return;
+    addOption(t, false);
+    taskSubtasks(t.id).forEach((s) => addOption(s, true));
+  });
+
   if ([...activeTaskSelect.options].some((o) => o.value === current)) {
     activeTaskSelect.value = current;
   }

@@ -498,6 +498,27 @@ main {
 }
 .task-actions button:hover { opacity: 1; background: var(--bg); }
 
+.task-item.subtask {
+  margin-left: 1.9rem;
+  border-left: 2px solid var(--border);
+  padding-left: 0.7rem;
+}
+
+.subtask-form input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.subtask-form .btn-primary,
+.subtask-form .btn-secondary {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.85rem;
+}
+
 /* ============ Dashboard ============ */
 .stats-grid {
   display: grid;
