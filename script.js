@@ -928,6 +928,37 @@ function renderTaskPicker() {
 const expandedMissions = new Set();
 const expandedCalDetail = new Set();
 
+// Resolve which main task a session belongs to, even when its task has
+// been deleted — in that case fall back to the stored "Parent › Sub" name.
+function resolveSessionTask(s) {
+  const task = s.taskId ? tasks.find((t) => t.id === s.taskId) : null;
+
+  if (task) {
+    const parent = task.parentId ? tasks.find((p) => p.id === task.parentId) : null;
+    if (parent) {
+      return { mainKey: parent.id, mainName: parent.name, mainTask: parent, task, subName: task.name };
+    }
+    return { mainKey: task.id, mainName: task.name, mainTask: task, task, subName: null };
+  }
+
+  const stored = s.taskName || "(no task)";
+  const sep = stored.indexOf(" › ");
+  if (sep !== -1) {
+    const parentName = stored.slice(0, sep);
+    const subName = stored.slice(sep + 3);
+    const parent = tasks.find((t) => !t.parentId && t.name === parentName);
+    return {
+      mainKey: parent ? parent.id : `__name__:${parentName}`,
+      mainName: parentName,
+      mainTask: parent || null,
+      task: null,
+      subName,
+    };
+  }
+
+  return { mainKey: s.taskId || "__none__", mainName: stored, mainTask: null, task: null, subName: null };
+}
+
 function groupSessionsByMainTask(sessionList) {
   const map = new Map();
 
@@ -939,26 +970,22 @@ function groupSessionsByMainTask(sessionList) {
   };
 
   sessionList.forEach((s) => {
-    const task = s.taskId ? tasks.find((t) => t.id === s.taskId) : null;
-    const parent = task?.parentId ? tasks.find((p) => p.id === task.parentId) : null;
-    const mainKey = parent ? parent.id : (s.taskId || "__none__");
+    const r = resolveSessionTask(s);
 
-    if (!map.has(mainKey)) {
-      const mainTask = parent || task;
-      const g = blank(mainTask ? mainTask.name : (s.taskName || "(no task)"));
-      g.id = mainKey;
+    if (!map.has(r.mainKey)) {
+      const g = blank(r.mainName);
+      g.id = r.mainKey;
       g.subs = new Map();
-      map.set(mainKey, g);
+      map.set(r.mainKey, g);
     }
 
-    const g = map.get(mainKey);
+    const g = map.get(r.mainKey);
     add(g, s);
 
-    if (parent) {
-      if (!g.subs.has(s.taskId)) {
-        g.subs.set(s.taskId, blank(task ? task.name : (s.taskName || "(no task)")));
-      }
-      add(g.subs.get(s.taskId), s);
+    if (r.subName !== null) {
+      const subKey = s.taskId || r.subName;
+      if (!g.subs.has(subKey)) g.subs.set(subKey, blank(r.subName));
+      add(g.subs.get(subKey), s);
     }
   });
 
@@ -1218,19 +1245,16 @@ function renderTaskStats() {
     return h > 0 ? `${h}h ${m}m` : `${m} min`;
   };
 
-  // Roll subtask time up into its main task
+  // Roll subtask time up into its main task (handles deleted tasks too)
   const groups = new Map();
   statsMap.forEach((data, id) => {
-    const task = tasks.find((t) => t.id === id);
-    const parent = task?.parentId ? tasks.find((p) => p.id === task.parentId) : null;
-    const mainId = parent ? parent.id : id;
+    const r = resolveSessionTask({ taskId: id, taskName: data.name });
 
-    if (!groups.has(mainId)) {
-      const mainTask = parent || task;
-      groups.set(mainId, {
-        id: mainId,
-        name: mainTask ? mainTask.name : data.name,
-        done: mainTask?.done || false,
+    if (!groups.has(r.mainKey)) {
+      groups.set(r.mainKey, {
+        id: r.mainKey,
+        name: r.mainName,
+        done: r.mainTask?.done || false,
         totalMinutes: 0,
         sessionCount: 0,
         days: new Set(),
@@ -1238,18 +1262,18 @@ function renderTaskStats() {
       });
     }
 
-    const g = groups.get(mainId);
+    const g = groups.get(r.mainKey);
     g.totalMinutes += data.totalMinutes;
     g.sessionCount += data.sessionCount;
     data.days.forEach((d) => g.days.add(d));
 
-    if (parent) {
+    if (r.subName !== null) {
       g.subs.push({
-        name: task ? task.name : data.name,
+        name: r.subName,
         totalMinutes: data.totalMinutes,
         sessionCount: data.sessionCount,
         avgPerSession: Math.round(data.totalMinutes / data.sessionCount),
-        done: task?.done || false,
+        done: r.task?.done || false,
       });
     }
   });
