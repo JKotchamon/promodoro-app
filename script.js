@@ -1109,6 +1109,8 @@ function renderActivityHeatmap() {
 // ==================================================================
 // Task Focus Stats
 // ==================================================================
+const expandedTaskStats = new Set();
+
 function renderTaskStats() {
   const statsMap = new Map();
 
@@ -1133,24 +1135,70 @@ function renderTaskStats() {
   }
   empty.classList.add("hidden");
 
-  const entries = [...statsMap.entries()]
-    .map(([id, data]) => ({
-      id,
-      name: data.name,
-      totalMinutes: data.totalMinutes,
-      sessionCount: data.sessionCount,
-      daysCount: data.days.size,
-      avgPerDay: Math.round(data.totalMinutes / data.days.size),
-      avgPerSession: Math.round(data.totalMinutes / data.sessionCount),
-      done: tasks.find((t) => t.id === id)?.done || false,
+  const fmtMins = (mins) => {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return h > 0 ? `${h}h ${m}m` : `${m} min`;
+  };
+
+  // Roll subtask time up into its main task
+  const groups = new Map();
+  statsMap.forEach((data, id) => {
+    const task = tasks.find((t) => t.id === id);
+    const parent = task?.parentId ? tasks.find((p) => p.id === task.parentId) : null;
+    const mainId = parent ? parent.id : id;
+
+    if (!groups.has(mainId)) {
+      const mainTask = parent || task;
+      groups.set(mainId, {
+        id: mainId,
+        name: mainTask ? mainTask.name : data.name,
+        done: mainTask?.done || false,
+        totalMinutes: 0,
+        sessionCount: 0,
+        days: new Set(),
+        subs: [],
+      });
+    }
+
+    const g = groups.get(mainId);
+    g.totalMinutes += data.totalMinutes;
+    g.sessionCount += data.sessionCount;
+    data.days.forEach((d) => g.days.add(d));
+
+    if (parent) {
+      g.subs.push({
+        name: task ? task.name : data.name,
+        totalMinutes: data.totalMinutes,
+        sessionCount: data.sessionCount,
+        avgPerSession: Math.round(data.totalMinutes / data.sessionCount),
+        done: task?.done || false,
+      });
+    }
+  });
+
+  const entries = [...groups.values()]
+    .map((g) => ({
+      ...g,
+      daysCount: g.days.size,
+      avgPerDay: Math.round(g.totalMinutes / g.days.size),
+      avgPerSession: Math.round(g.totalMinutes / g.sessionCount),
+      subs: g.subs.sort((a, b) => b.totalMinutes - a.totalMinutes),
     }))
     .sort((a, b) => b.totalMinutes - a.totalMinutes);
 
   const maxAvgPerDay = Math.max(...entries.map((e) => e.avgPerDay), 1);
 
   entries.forEach((entry) => {
+    const hasSubs = entry.subs.length > 0;
+    const isExpanded = hasSubs && expandedTaskStats.has(entry.id);
+
     const row = document.createElement("div");
-    row.className = "task-stat-row" + (entry.done ? " task-stat-done" : "");
+    row.className =
+      "task-stat-row" +
+      (entry.done ? " task-stat-done" : "") +
+      (hasSubs ? " has-subs" : "") +
+      (isExpanded ? " expanded" : "");
 
     const header = document.createElement("div");
     header.className = "task-stat-header";
@@ -1159,11 +1207,16 @@ function renderTaskStats() {
     name.className = "task-stat-name";
     name.textContent = entry.name;
 
+    if (hasSubs) {
+      const caret = document.createElement("span");
+      caret.className = "task-stat-caret";
+      caret.textContent = "▸";
+      name.prepend(caret);
+    }
+
     const total = document.createElement("span");
     total.className = "task-stat-total";
-    const h = Math.floor(entry.totalMinutes / 60);
-    const m = entry.totalMinutes % 60;
-    total.textContent = h > 0 ? `${h}h ${m}m` : `${m} min`;
+    total.textContent = fmtMins(entry.totalMinutes);
     total.title = `${entry.totalMinutes} total minutes`;
 
     header.append(name, total);
@@ -1173,7 +1226,8 @@ function renderTaskStats() {
     meta.textContent =
       `${entry.sessionCount} session${entry.sessionCount !== 1 ? "s" : ""}  ·  ` +
       `${entry.daysCount} day${entry.daysCount !== 1 ? "s" : ""}  ·  ` +
-      `avg ${entry.avgPerSession} min/session`;
+      `avg ${entry.avgPerSession} min/session` +
+      (hasSubs ? `  ·  ${entry.subs.length} subtask${entry.subs.length !== 1 ? "s" : ""}` : "");
 
     const avgRow = document.createElement("div");
     avgRow.className = "task-stat-avg-row";
@@ -1192,6 +1246,48 @@ function renderTaskStats() {
 
     avgRow.append(avgLabel, barWrap);
     row.append(header, meta, avgRow);
+
+    if (hasSubs) {
+      const subList = document.createElement("div");
+      subList.className = "task-stat-subs";
+
+      entry.subs.forEach((sub) => {
+        const subRow = document.createElement("div");
+        subRow.className = "task-stat-sub" + (sub.done ? " task-stat-done" : "");
+
+        const subHeader = document.createElement("div");
+        subHeader.className = "task-stat-sub-header";
+
+        const subName = document.createElement("span");
+        subName.className = "task-stat-sub-name";
+        subName.textContent = sub.name;
+
+        const subTotal = document.createElement("span");
+        subTotal.className = "task-stat-sub-total";
+        subTotal.textContent = fmtMins(sub.totalMinutes);
+        subTotal.title = `${sub.totalMinutes} total minutes`;
+
+        subHeader.append(subName, subTotal);
+
+        const subMeta = document.createElement("div");
+        subMeta.className = "task-stat-meta task-stat-sub-meta";
+        subMeta.textContent =
+          `${sub.sessionCount} session${sub.sessionCount !== 1 ? "s" : ""}  ·  ` +
+          `avg ${sub.avgPerSession} min/session`;
+
+        subRow.append(subHeader, subMeta);
+        subList.appendChild(subRow);
+      });
+
+      row.appendChild(subList);
+
+      row.addEventListener("click", () => {
+        if (expandedTaskStats.has(entry.id)) expandedTaskStats.delete(entry.id);
+        else expandedTaskStats.add(entry.id);
+        row.classList.toggle("expanded");
+      });
+    }
+
     container.appendChild(row);
   });
 }

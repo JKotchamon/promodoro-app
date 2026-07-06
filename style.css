@@ -959,6 +959,59 @@ main {
   min-width: 3px;
 }
 
+.task-stat-row.has-subs { cursor: pointer; }
+.task-stat-row.has-subs:hover .task-stat-name { color: var(--accent-dark); }
+
+.task-stat-caret {
+  display: inline-block;
+  margin-right: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+}
+.task-stat-row.expanded .task-stat-caret { transform: rotate(90deg); }
+
+.task-stat-subs {
+  display: none;
+  margin-top: 0.65rem;
+  padding-left: 1rem;
+  border-left: 2px solid var(--border);
+}
+.task-stat-row.expanded .task-stat-subs { display: block; }
+
+.task-stat-sub { padding: 0.4rem 0; }
+
+.task-stat-sub-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.task-stat-sub-name {
+  font-weight: 500;
+  font-size: 0.9rem;
+  flex: 1;
+  word-break: break-word;
+}
+
+.task-stat-sub-total {
+  font-weight: 600;
+  color: var(--accent-dark);
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+
+.task-stat-sub-meta {
+  font-size: 0.76rem;
+  margin-bottom: 0;
+}
+
+.task-stat-sub.task-stat-done .task-stat-sub-name {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
 /* ============ Responsive — tablet (≤ 768px) ============ */
 @media (max-width: 768px) {
   main { padding: 1.2rem 0.85rem 2.5rem; }
