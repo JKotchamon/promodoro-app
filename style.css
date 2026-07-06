@@ -332,6 +332,38 @@ main {
   font-size: 0.95rem;
 }
 
+.mission-item.has-subs {
+  display: block;
+  cursor: pointer;
+}
+.mission-item.has-subs:hover .mission-main .mission-task { color: var(--accent-dark); }
+
+.mission-main {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.mission-item.expanded .task-stat-caret { transform: rotate(90deg); }
+
+.mission-subs {
+  display: none;
+  margin-top: 0.5rem;
+  padding-left: 1rem;
+  border-left: 2px solid var(--border);
+}
+.mission-item.expanded .mission-subs { display: block; }
+
+.mission-sub {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.35rem 0;
+}
+.mission-sub .mission-task { font-size: 0.9rem; }
+.mission-sub .mission-pomos { font-size: 0.85rem; }
+.mission-sub .mission-time { font-size: 0.85rem; font-weight: 600; }
+
 /* ============ Task picker ============ */
 .task-picker {
   margin-top: 1rem;

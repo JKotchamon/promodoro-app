@@ -925,60 +925,137 @@ function renderTaskPicker() {
 // ==================================================================
 // Missions — today's per-task session stacks
 // ==================================================================
+const expandedMissions = new Set();
+const expandedCalDetail = new Set();
+
+function groupSessionsByMainTask(sessionList) {
+  const map = new Map();
+
+  const blank = (name) => ({ name, pomoCount: 0, swMins: 0, totalMinutes: 0 });
+  const add = (entry, s) => {
+    if (s.source === "stopwatch") entry.swMins += s.minutes;
+    else entry.pomoCount += 1;
+    entry.totalMinutes += s.minutes;
+  };
+
+  sessionList.forEach((s) => {
+    const task = s.taskId ? tasks.find((t) => t.id === s.taskId) : null;
+    const parent = task?.parentId ? tasks.find((p) => p.id === task.parentId) : null;
+    const mainKey = parent ? parent.id : (s.taskId || "__none__");
+
+    if (!map.has(mainKey)) {
+      const mainTask = parent || task;
+      const g = blank(mainTask ? mainTask.name : (s.taskName || "(no task)"));
+      g.id = mainKey;
+      g.subs = new Map();
+      map.set(mainKey, g);
+    }
+
+    const g = map.get(mainKey);
+    add(g, s);
+
+    if (parent) {
+      if (!g.subs.has(s.taskId)) {
+        g.subs.set(s.taskId, blank(task ? task.name : (s.taskName || "(no task)")));
+      }
+      add(g.subs.get(s.taskId), s);
+    }
+  });
+
+  return [...map.values()].map((g) => ({ ...g, subs: [...g.subs.values()] }));
+}
+
+function missionPomoIcons(entry) {
+  const icons = document.createElement("span");
+  icons.className = "mission-pomos";
+  let txt = "";
+  if (entry.pomoCount > 0) {
+    txt += "🍅".repeat(Math.min(entry.pomoCount, 12));
+    if (entry.pomoCount > 12) txt += ` ×${entry.pomoCount}`;
+  }
+  if (entry.swMins > 0) {
+    txt += (txt ? " " : "") + `⏱${formatMinutes(entry.swMins, true)}`;
+  }
+  icons.textContent = txt || "—";
+  icons.title = [
+    entry.pomoCount > 0 ? `${entry.pomoCount} pomodoro${entry.pomoCount !== 1 ? "s" : ""}` : "",
+    entry.swMins > 0 ? `${entry.swMins} min stopwatch` : "",
+  ].filter(Boolean).join(", ");
+  return icons;
+}
+
+function missionTimeEl(entry) {
+  const time = document.createElement("span");
+  time.className = "mission-time";
+  time.textContent = formatMinutes(entry.totalMinutes);
+  return time;
+}
+
+function buildMissionItem(entry, expandedSet) {
+  const li = document.createElement("li");
+  li.className = "mission-item";
+
+  const hasSubs = entry.subs.length > 0;
+
+  const main = document.createElement("div");
+  main.className = "mission-main";
+
+  const name = document.createElement("span");
+  name.className = "mission-task";
+  name.textContent = entry.name;
+
+  if (hasSubs) {
+    const caret = document.createElement("span");
+    caret.className = "task-stat-caret";
+    caret.textContent = "▸";
+    name.prepend(caret);
+  }
+
+  main.append(name, missionPomoIcons(entry), missionTimeEl(entry));
+  li.appendChild(main);
+
+  if (hasSubs) {
+    li.classList.add("has-subs");
+    if (expandedSet.has(entry.id)) li.classList.add("expanded");
+
+    const subList = document.createElement("div");
+    subList.className = "mission-subs";
+
+    entry.subs.forEach((sub) => {
+      const subRow = document.createElement("div");
+      subRow.className = "mission-sub";
+
+      const subName = document.createElement("span");
+      subName.className = "mission-task";
+      subName.textContent = sub.name;
+
+      subRow.append(subName, missionPomoIcons(sub), missionTimeEl(sub));
+      subList.appendChild(subRow);
+    });
+
+    li.appendChild(subList);
+
+    li.addEventListener("click", () => {
+      if (expandedSet.has(entry.id)) expandedSet.delete(entry.id);
+      else expandedSet.add(entry.id);
+      li.classList.toggle("expanded");
+    });
+  }
+
+  return li;
+}
+
 function renderMissions() {
   const todayKey = dayKey(new Date());
   const todaySessions = sessions.filter((s) => dayKey(s.date) === todayKey);
 
-  const map = new Map();
-  todaySessions.forEach((s) => {
-    const key = s.taskId || "__none__";
-    if (!map.has(key)) map.set(key, { name: s.taskName || "(no task)", pomoCount: 0, swMins: 0, totalMinutes: 0 });
-    const entry = map.get(key);
-    if (s.source === "stopwatch") {
-      entry.swMins += s.minutes;
-    } else {
-      entry.pomoCount += 1;
-    }
-    entry.totalMinutes += s.minutes;
-  });
+  const entries = groupSessionsByMainTask(todaySessions).reverse();
 
   const list = $("missions-list");
   list.innerHTML = "";
-
-  const entries = [...map.values()].reverse();
   $("missions-empty").classList.toggle("hidden", entries.length > 0);
 
-  entries.forEach((entry) => {
-    const li = document.createElement("li");
-    li.className = "mission-item";
-
-    const name = document.createElement("span");
-    name.className = "mission-task";
-    name.textContent = entry.name;
-
-    const icons = document.createElement("span");
-    icons.className = "mission-pomos";
-    let txt = "";
-    if (entry.pomoCount > 0) {
-      txt += "🍅".repeat(Math.min(entry.pomoCount, 12));
-      if (entry.pomoCount > 12) txt += ` ×${entry.pomoCount}`;
-    }
-    if (entry.swMins > 0) {
-      txt += (txt ? " " : "") + `⏱${formatMinutes(entry.swMins, true)}`;
-    }
-    icons.textContent = txt || "—";
-    icons.title = [
-      entry.pomoCount > 0 ? `${entry.pomoCount} pomodoro${entry.pomoCount !== 1 ? "s" : ""}` : "",
-      entry.swMins > 0 ? `${entry.swMins} min stopwatch` : "",
-    ].filter(Boolean).join(", ");
-
-    const time = document.createElement("span");
-    time.className = "mission-time";
-    time.textContent = formatMinutes(entry.totalMinutes);
-
-    li.append(name, icons, time);
-    list.appendChild(li);
-  });
+  entries.forEach((entry) => list.appendChild(buildMissionItem(entry, expandedMissions)));
 }
 
 // ==================================================================
@@ -1380,49 +1457,8 @@ function buildDayDetail(k) {
   }
   empty.classList.add("hidden");
 
-  const map = new Map();
-  daySessions.forEach((s) => {
-    const key = s.taskId || "__none__";
-    if (!map.has(key)) map.set(key, { name: s.taskName || "(no task)", pomoCount: 0, swMins: 0, totalMinutes: 0 });
-    const entry = map.get(key);
-    if (s.source === "stopwatch") {
-      entry.swMins += s.minutes;
-    } else {
-      entry.pomoCount += 1;
-    }
-    entry.totalMinutes += s.minutes;
-  });
-
-  [...map.values()].forEach((entry) => {
-    const li = document.createElement("li");
-    li.className = "mission-item";
-
-    const name = document.createElement("span");
-    name.className = "mission-task";
-    name.textContent = entry.name;
-
-    const icons = document.createElement("span");
-    icons.className = "mission-pomos";
-    let txt = "";
-    if (entry.pomoCount > 0) {
-      txt += "🍅".repeat(Math.min(entry.pomoCount, 12));
-      if (entry.pomoCount > 12) txt += ` ×${entry.pomoCount}`;
-    }
-    if (entry.swMins > 0) {
-      txt += (txt ? " " : "") + `⏱${formatMinutes(entry.swMins, true)}`;
-    }
-    icons.textContent = txt || "—";
-    icons.title = [
-      entry.pomoCount > 0 ? `${entry.pomoCount} pomodoro${entry.pomoCount !== 1 ? "s" : ""}` : "",
-      entry.swMins > 0 ? `${entry.swMins} min stopwatch` : "",
-    ].filter(Boolean).join(", ");
-
-    const time = document.createElement("span");
-    time.className = "mission-time";
-    time.textContent = formatMinutes(entry.totalMinutes);
-
-    li.append(name, icons, time);
-    list.appendChild(li);
+  groupSessionsByMainTask(daySessions).forEach((entry) => {
+    list.appendChild(buildMissionItem(entry, expandedCalDetail));
   });
 }
 
