@@ -864,7 +864,7 @@ function renderMissions() {
       if (entry.pomoCount > 12) txt += ` ×${entry.pomoCount}`;
     }
     if (entry.swMins > 0) {
-      txt += (txt ? " " : "") + `⏱${entry.swMins}m`;
+      txt += (txt ? " " : "") + `⏱${formatMinutes(entry.swMins, true)}`;
     }
     icons.textContent = txt || "—";
     icons.title = [
@@ -874,7 +874,7 @@ function renderMissions() {
 
     const time = document.createElement("span");
     time.className = "mission-time";
-    time.textContent = `${entry.totalMinutes} min`;
+    time.textContent = formatMinutes(entry.totalMinutes);
 
     li.append(name, icons, time);
     list.appendChild(li);
@@ -1213,7 +1213,7 @@ function buildDayDetail(k) {
       if (entry.pomoCount > 12) txt += ` ×${entry.pomoCount}`;
     }
     if (entry.swMins > 0) {
-      txt += (txt ? " " : "") + `⏱${entry.swMins}m`;
+      txt += (txt ? " " : "") + `⏱${formatMinutes(entry.swMins, true)}`;
     }
     icons.textContent = txt || "—";
     icons.title = [
@@ -1223,7 +1223,7 @@ function buildDayDetail(k) {
 
     const time = document.createElement("span");
     time.className = "mission-time";
-    time.textContent = `${entry.totalMinutes} min`;
+    time.textContent = formatMinutes(entry.totalMinutes);
 
     li.append(name, icons, time);
     list.appendChild(li);
@@ -1262,6 +1262,13 @@ function dayKey(date) {
   ).padStart(2, "0")}`;
 }
 
+function formatMinutes(mins, short = false) {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  return short ? `${m}m` : `${m} min`;
+}
+
 
 function renderDashboard() {
   renderCalendar();
@@ -1283,7 +1290,7 @@ function renderDashboard() {
     }
   });
 
-  $("stat-today-minutes").textContent = todayMinutes;
+  $("stat-today-minutes").textContent = formatMinutes(todayMinutes, true);
   $("stat-today-pomos").textContent = todaySessions;
   $("stat-tasks-done").textContent = tasks.filter((t) => t.done).length;
 
