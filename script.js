@@ -444,13 +444,16 @@ function sessionFinished() {
       notify("All cycles done! 🍅", "Time for a long break.");
       msg = `All ${settings.cycles} cycles complete! 🍅  Time for a long break.`;
     } else {
-      const next = timer.cycle + 1;
-      notify(`Cycle ${timer.cycle} done! 🍅`, `Ready for cycle ${next}?`);
-      msg = `Cycle ${timer.cycle} complete! 🍅  Ready for cycle ${next}?`;
+      notify(`Cycle ${timer.cycle} focus done! 🍅`, "Time for a short break.");
+      msg = `Cycle ${timer.cycle} focus complete! 🍅  Time for a short break.`;
     }
+  } else if (timer.mode === "short") {
+    const next = timer.cycle + 1;
+    notify("Break is over!", `Ready for cycle ${next}?`);
+    msg = `Break is over! 🎯  Ready for cycle ${next}?`;
   } else {
-    notify("Break is over!", "Ready to focus again?");
-    msg = "Break is over! 🎯  Ready to focus?";
+    notify("Long break is over!", "Ready for a fresh set of cycles?");
+    msg = "Long break over! 🎯  Ready for a fresh set of cycles?";
   }
   startAlarm();
   showSessionBanner(msg, true);
@@ -459,13 +462,15 @@ function sessionFinished() {
 function advance(skipped) {
   if (timer.mode === "focus") {
     if (timer.cycle >= settings.cycles) {
-      timer.cycle = 1;
       setMode("long");
     } else {
-      timer.cycle += 1;
-      setMode("focus");
+      setMode("short");
     }
+  } else if (timer.mode === "short") {
+    timer.cycle += 1;
+    setMode("focus");
   } else {
+    timer.cycle = 1;
     setMode("focus");
   }
   if (!skipped && settings.autoStart) startPause();
@@ -553,7 +558,10 @@ function renderTimer() {
   const modeLabel = { focus: "Focus", short: "Break", long: "Long break" }[timer.mode];
   document.title = timer.running ? `${text} — ${modeLabel} | Prodomoro` : "Prodomoro";
 
-  const completed = timer.mode === "long" ? settings.cycles : timer.cycle - 1;
+  const completed =
+    timer.mode === "long" ? settings.cycles
+    : timer.mode === "short" ? Math.min(timer.cycle, settings.cycles)
+    : timer.cycle - 1;
   const total = settings.cycles;
   const stack = "🍅".repeat(completed) + "○".repeat(Math.max(0, total - completed));
   cycleIndicator.textContent = timer.mode === "focus"
@@ -1253,6 +1261,7 @@ function dayKey(date) {
     d.getDate()
   ).padStart(2, "0")}`;
 }
+
 
 function renderDashboard() {
   renderCalendar();
