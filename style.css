@@ -342,6 +342,8 @@ main {
   display: flex;
   align-items: center;
   gap: 0.8rem;
+  flex: 1;
+  min-width: 0;
 }
 
 .mission-item.expanded .task-stat-caret { transform: rotate(90deg); }
