@@ -337,6 +337,17 @@ function setMode(mode, { keepCycle = true } = {}) {
   renderTimer();
 }
 
+// Focus sessions and the stopwatch must be tied to a task.
+function requireSelectedTask() {
+  const task = tasks.find((t) => t.id === activeTaskSelect.value);
+  if (task) return true;
+  showSessionBanner("⚠ Select a task first — choose what you're working on.", false);
+  activeTaskSelect.classList.add("needs-task");
+  setTimeout(() => activeTaskSelect.classList.remove("needs-task"), 1600);
+  activeTaskSelect.focus();
+  return false;
+}
+
 function startPause() {
   if (timer.mode === "stopwatch") {
     if (sw.running) {
@@ -345,6 +356,7 @@ function startPause() {
       clearInterval(swIntervalId);
       swIntervalId = null;
     } else {
+      if (!requireSelectedTask()) return;
       if ("Notification" in window && Notification.permission === "default") {
         Notification.requestPermission();
       }
@@ -362,6 +374,7 @@ function startPause() {
     stopTicking();
     stopKeepAlive();
   } else {
+    if (timer.mode === "focus" && !requireSelectedTask()) return;
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
@@ -488,6 +501,7 @@ function skipSession() {
 
 // ---------- Stopwatch save ----------
 function stopAndSaveStopwatch() {
+  if (!requireSelectedTask()) return;
   const elapsed = getSwElapsed();
   const minutes = Math.round(elapsed / 60000);
   if (minutes < 1) {
@@ -904,7 +918,7 @@ function renderTasks() {
 
 function renderTaskPicker() {
   const current = activeTaskSelect.value;
-  activeTaskSelect.innerHTML = '<option value="">— no task selected —</option>';
+  activeTaskSelect.innerHTML = '<option value="" disabled selected hidden>Select a task…</option>';
 
   const addOption = (t, sub) => {
     if (t.done) return;
@@ -935,15 +949,11 @@ const expandedMissions = new Set();
 const expandedCalDetail = new Set();
 
 // Resolve which main task a session belongs to.
-// Returns null when the session's task was deleted — those sessions still
-// count toward overall focus time but are hidden from per-task lists.
+// Returns null when the session has no task or its task was deleted —
+// those sessions still count toward overall focus time but are hidden
+// from per-task lists.
 function resolveSessionTask(s) {
-  if (!s.taskId) {
-    // taskName present means the task was deleted (DB sets task_id to null);
-    // no taskName means the session was run without a task.
-    if (s.taskName) return null;
-    return { mainKey: "__none__", mainName: "(no task)", mainTask: null, task: null, subName: null };
-  }
+  if (!s.taskId) return null;
 
   const task = tasks.find((t) => t.id === s.taskId);
   if (!task) return null;

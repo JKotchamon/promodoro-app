@@ -385,6 +385,12 @@ main {
   background: var(--card);
   font-size: 0.95rem;
   max-width: 260px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.task-picker select.needs-task {
+  border-color: #d64545;
+  box-shadow: 0 0 0 3px rgba(214, 69, 69, 0.25);
 }
 
 /* ============ Tasks ============ */
